@@ -13,7 +13,7 @@ with open(LICENSE) as f:
 
 setup(
     name="lockeye",
-    version="0.0.0",
+    version="0.0.1",
     description="code monitor",
     long_description=readme,
     author="Worroc",
