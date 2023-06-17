@@ -1,0 +1,42 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v2.3.0
+    hooks:
+      - id: debug-statements
+      - id: trailing-whitespace
+        exclude: '.bumpversion.cfg'
+      - id: end-of-file-fixer
+        exclude: '.bumpversion.cfg'
+      - id: check-json
+      - id: flake8
+      - id: check-docstring-first
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-executables-have-shebangs
+      - id: mixed-line-ending
+      - id: detect-private-key
+  - repo: https://github.com/pycqa/flake8.git
+    rev: 3.9.2
+    hooks:
+      - id: flake8
+  - repo: https://github.com/pre-commit/mirrors-isort
+    rev: v5.10.1
+    hooks:
+      - id: isort
+        additional_dependencies: ["toml"]  # To parse our pyproject.toml
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.9.0
+    hooks:
+      - id: python-use-type-annotations
+      - id: python-check-blanket-noqa
+      - id: python-no-eval
+      - id: rst-backticks
+        exclude: docs/misc/coding-guidelines.rst
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.26.3
+    hooks:
+      - id: yamllint
+  - repo: https://github.com/psf/black
+    rev: 22.3.0
+    hooks:
+      - id: black
