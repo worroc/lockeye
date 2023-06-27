@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 # matches the following derective
 # """    # lockeye: explorer/explorer/events.py +8"""
 # """lockeye: explorer/explorer/events.py +8"""
-derective_rex = re.compile(r"(\s*).*?lockeye:\s+(.*?)\s[+](\d+)$")
-
+derective_rex = None
+ref_terminator = None
 root = None
 
 Location = namedtuple("Location", ["file", "line", "lstrip"])
@@ -115,7 +115,7 @@ def read_orig_code(orig_file: Path, orig_line: int, size: int):
 def read_ref_code(f: TextIO, prefix_size: int):
     ref_code = []
     line = f.readline()
-    while line and "lockeye-stop" not in line:
+    while line and ref_terminator not in line:
         code_line = line[prefix_size:] or line[-1]
         ref_code.append(code_line)
         line = f.readline()
@@ -134,9 +134,14 @@ def read_derective(root: Path, f: TextIO):
     raise Exception("no header found")
 
 
-def get_samples(root: Path) -> List[CodeRef]:
+def get_samples(root: Path, args: Dict) -> List[CodeRef]:
+    match_patterns = " ".join([f'--include "{pattern}"' for pattern in args["pattern"]])
+    anchor = args["anchor"][0]
+
     samples: List[CodeRef] = []
-    command = f'grep -Rn lockeye --include "*.rst" {root}/* | grep -v lockeye-stop'
+    command = f"grep -Rn {anchor} {match_patterns} {root}/* | grep -v {anchor}-stop"
+    logger.debug(f"looking for references {command}")
+    print(f"looking for references {command}")
     res = subprocess.run(command, shell=True, capture_output=True)
     if res.returncode:
         return []
@@ -153,6 +158,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     env_group = parser.add_argument_group("env options")
     env_group.add_argument("--log-level", default="info", nargs="*", help="log level output")
+    env_group.add_argument("--pattern", default=["*.rst"], nargs="*", help="file match pattern")
+    env_group.add_argument("--anchor", default=["lockeye"], nargs="*", help="anchor name to search for in files")
     target_group = parser.add_argument_group("target options")
     target_group.add_argument(
         "files", nargs="*", help="One or more Python source files that need their imports sorted."
@@ -178,13 +185,18 @@ def config_logger(args):
 
 
 def main():
-    global root
+    global root, derective_rex, ref_terminator
     args = parse_args()
     config_logger(args)
     logger.debug(f"running from: '{__file__}'")
     logger.debug(f"Arguments: {args}")
     root = Path().cwd()
-    samples = get_samples(root)
+    logger.debug(f"working on {root}")
+    # used to match references
+    anchor = args["anchor"][0]
+    derective_rex = re.compile(r"(\s*).*?" + anchor + r":\s+(.*?)\s[+](\d+)$")
+    ref_terminator = f"{anchor}-stop"
+    samples = get_samples(root, args)
     failed = False
     if samples:
         for sample in samples:
