@@ -1,17 +1,13 @@
 import argparse
 import logging
-from collections import defaultdict
 import subprocess
 import sys
-from collections import namedtuple
-from dataclasses import dataclass
+from collections import defaultdict, namedtuple
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, TextIO
+from typing import Any, Dict, List, Optional, Sequence
 
 logger = logging.getLogger(__name__)
-
-root = None
 
 Location = namedtuple("Location", ["file", "line", "lstrip"])
 
@@ -24,33 +20,40 @@ def _color(color: str, text: str):
 
 
 highlight_file = partial(_color, "red")
+highlight_info = partial(_color, "green")
 
 
 Match = namedtuple("Match", ["file", "matched_lines"])
 
-def get_matches(args: Dict, ) -> List[Match]:
-    marker = args["marker"]
-    files = args["files"]
-    command = f"git diff --cached"
-    logger.debug(f"looking for references {command}")
+
+def get_matches(
+    args: Dict,
+) -> List[Match]:
+    marker = args["marker"].lower()
+    command = "git diff --cached"
+    logger.debug(f"looking for marker `{marker}` in diffs {command}")
     res = subprocess.run(command, shell=True, capture_output=True)
     if res.returncode:
         return []
     res = res.stdout.decode("utf-8")
     if marker not in res:
         return []
-    
-    lines = filter(lambda x: ("diff" in x) or (marker in x), res.split("\n"))
+
+    lines = res.split("\n")
+
     matches: List[Match] = []
-    i = 0
     file_2_matches = defaultdict(list)
+    file = ""
+
     for line in lines:
-        if "diff" in line:
+        if line.startswith("diff --git"):
             # `diff --git a/exclude_marked/main.py b/exclude_marked/main.py`
-            file = Path(line.split(" ")[-1][2:])
+            logger.debug(f"file: {line}")
+            file = Path(line.split(" ")[-1][2:].strip())
             continue
-        if marker in line and line.startswith("+"):
-            # `+        args: ["--marker=NO-COMMIT", "--log-level", "DEBUG"]`
+        
+        if line.startswith("+") and marker in line.lower():
+            # `+zx        args: ["--marker=NO-COMMIT", "--log-level", "DEBUG"]`
             file_2_matches[file].append(line)
 
     for file, lines in file_2_matches.items():
@@ -66,11 +69,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     env_group = parser.add_argument_group("env options")
     env_group.add_argument("--log-level", default="info", help="log level output")
-    env_group.add_argument("--marker", default="NO-COMMIT", help="marker to discard from commit")
+    env_group.add_argument("--marker", default="no-commit", help="marker to discard from commit (case insensitive)")
     target_group = parser.add_argument_group("target options")
-    target_group.add_argument(
-        "files", nargs="*", help="One or more source files."
-    )
+    target_group.add_argument("files", nargs="*", help="One or more source files.")
     return parser
 
 
@@ -82,7 +83,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> Dict[str, Any]:
 
 
 def config_logger(args):
-    ll = args["log_level"][0].upper()
+    ll = args["log_level"].upper()
     numeric_level = getattr(logging, ll.upper(), None)
     if not isinstance(numeric_level, int):
         numeric_level = logging.INFO
@@ -92,22 +93,24 @@ def config_logger(args):
 
 
 def main():
-    global root, ref_terminator
     args = parse_args()
     config_logger(args)
     logger.debug(f"running from: '{__file__}'")
     logger.debug(f"Arguments: {args}")
-    root = Path().cwd()
-    logger.debug(f"working on {root}")
     matches = get_matches(args)
-
+    root = Path().cwd()
+    logger.debug(f"working on directory: {root}")
     failed = False
     if matches:
         for match in matches:
             print(highlight_file(f"File: {match.file}"))
+            subprocess.run(f"git reset -- {match.file}", shell=True, capture_output=True)
             for line in match.matched_lines:
                 print(line)
             failed = failed or True
+
+    print(highlight_info("files were excluded from commit"))
+    
     if failed:
         sys.exit(1)
 
