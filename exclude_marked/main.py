@@ -51,7 +51,7 @@ def get_matches(
             logger.debug(f"file: {line}")
             file = Path(line.split(" ")[-1][2:].strip())
             continue
-        
+
         if line.startswith("+") and marker in line.lower():
             # `+zx        args: ["--marker=NO-COMMIT", "--log-level", "DEBUG"]`
             file_2_matches[file].append(line)
@@ -109,9 +109,8 @@ def main():
                 print(line)
             failed = failed or True
 
-    print(highlight_info("files were excluded from commit"))
-    
     if failed:
+        print(highlight_info("files were excluded from commit"))
         sys.exit(1)
 
 
