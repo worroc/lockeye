@@ -1,4 +1,13 @@
 repos:
+  - repo: local
+    hooks:
+      - id: exclude-marked
+        name: Exclude from commit
+        language: system
+        entry: exclude-marked
+        description: "Exclude changes to be commited if contains some marker"
+        args: ["--marker=NO-COMMIT", "--log-level", "DEBUG"]
+        require_serial: true
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v2.3.0
     hooks:

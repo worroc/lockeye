@@ -157,7 +157,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         add_help=False,
     )
     env_group = parser.add_argument_group("env options")
-    env_group.add_argument("--log-level", default="info", nargs="*", help="log level output")
+    env_group.add_argument("--log-level", default="info", help="log level output")
     env_group.add_argument("--pattern", default=["*.rst"], nargs="*", help="file match pattern")
     env_group.add_argument("--anchor", default=["lockeye"], nargs="*", help="anchor name to search for in files")
     target_group = parser.add_argument_group("target options")
@@ -175,7 +175,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> Dict[str, Any]:
 
 
 def config_logger(args):
-    ll = args["log_level"][0].upper()
+    ll = args["log_level"].upper()
     numeric_level = getattr(logging, ll.upper(), None)
     if not isinstance(numeric_level, int):
         raise ValueError(f"Invalid log level: {ll}")

@@ -4,3 +4,7 @@
   name: "monitor code changes"
   language: python
   entry: lockeye
+- id: exclude-marked
+  name: "deny commit marked changes"
+  language: python
+  entry: exclude-marked

@@ -28,6 +28,6 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
     ],
-    entry_points={"console_scripts": ("lockeye=lockeye.main:main",)},
+    entry_points={"console_scripts": ("lockeye=lockeye.main:main", "exclude-marked=exclude_marked.main:main")},
     data_files=[("", [LICENSE, README])],
 )

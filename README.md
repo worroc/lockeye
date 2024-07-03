@@ -5,7 +5,7 @@ Used to track changes of text sample from another file
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 ![Linux](https://img.shields.io/sourceforge/platform/platform?color=green&logo=Linux)
 
-# usage
+## usage
 
 there is minimum 2 files involved
 
@@ -79,10 +79,10 @@ add configuration to `.pre-commit-config.yaml` file of your repo
 
 ```
   - repo: https://github.com/worroc/lockeye
-    rev: v0.0.4
+    rev: v0.0.2
     hooks:
       - id: lockeye
-        args: ['--log-level', 'error', '--pattern', '*.rst', '*.md', '--anchor', 'lockeye']
+        args: ['--log-level', 'error', '--pattern', '*.rst', '*.md', '*.py', '--anchor', 'lockeye']
 ```
 
 or add -- as last parameter to prevent modified files from been added
@@ -92,7 +92,7 @@ as values to previous parameter
         args: ['--log-level', 'error', '--pattern', '*.rst', '*.md', '--']
 ```
 
-# developing
+## developing
 
 The simplest way to developing is working on the sources
 
@@ -105,3 +105,68 @@ The `lockeye` hook will print location of the hook source file
     ln -sf ~/projects/lockeye/lockeye/main.py <file location from last run>
 
 Now any changes in repo will in action.
+
+# exclude-marked
+
+do not allow commit changes marked "NO-COMMIT"
+
+```
+  if expression:
+    print(f"debug {expression}")  # NO-COMMIT: print expression value only locally
+    ...
+```
+## configure pre-commit
+
+add configuration to `.pre-commit-config.yaml` file of your repo
+
+```
+  - repo: https://github.com/worroc/lockeye
+    rev: v0.0.2
+    hooks:
+      - id: exclude-marked
+        args: ['--log-level', 'info', '--marker', 'NO-COMMIT']
+```
+
+arguments default values:
+
+* --log-level: info
+* --marker: NO-COMMIT
+
+## configure local
+
+```
+    git pull git@github.com:worroc/lockeye.git
+    cd lockyey
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -e .
+    pwd
+```
+
+add configuration to `.pre-commit-config.yaml` file of your repo
+
+  - repo: local
+    hooks:
+      - id: exclude-marked
+        name: Exclude from commit
+        language: system
+        entry: <lockeye_repo_directory>/exclude-marked
+        description: "Exclude changes to be commited if contains some marker"
+        args: ["--marker=NO-COMMIT", "--log-level", "DEBUG"]
+        require_serial: true
+
+## developing
+
+```
+    # install & configure
+    git pull git@github.com:worroc/lockeye.git
+    cd lockyey
+    python -m venv .venv
+    source .venv/bin/activate
+    pip install -e .
+
+    # see in action
+    echo "NO-COMMIT" >> README.txt
+    git add README.txt
+    pre-commit run
+```
