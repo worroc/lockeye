@@ -36,7 +36,7 @@ def get_matches(
     if res.returncode:
         return []
     res = res.stdout.decode("utf-8")
-    if marker not in res:
+    if marker not in res.lower():
         return []
 
     lines = res.split("\n")
