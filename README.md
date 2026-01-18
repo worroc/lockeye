@@ -21,23 +21,23 @@ this will print FooBar in a complex way. see example
 
 .. code-block:: python
 
-  # lockeye: source/do.py +3
-  def complex(bar=1):
-    if bar == 1:
-      print("foo")
-    elif bar == 2:
-      print("foo-bar")
-    else
-      print("bar-bar")
+   # lockeye: source/do.py +3
+   def complex(bar=1):
+     if bar == 1:
+       print("foo")
+     elif bar == 2:
+       print("foo-bar")
+     else
+       print("bar-bar")
 .. lockeye-stop
 
 .. code-block:: python
-  # lockeye: source/do.py +11
-  def simple():
-    print("bar")
-  # lockeye-stop
+   # lockeye: source/do.py +11
+   def simple():
+     print("bar")
+   # lockeye-stop
 
-  some other code
+   # some other code
 
 ```
 
@@ -68,28 +68,28 @@ exactly match the code in source file.
 * The line counting start from 1 and derective `# lockeye: source/do.py +11` start comparing
   will skip 10 first line of the source file.
 * The lines with only spaces are not compared and assumed as equal
-* Since rst format code block has identation lockeye will remove spaces from each line of the
-  code as match as exists untill first character
+* Since rst format code block has identation lockeye will remove spaces
+  from each line of the code as match as exists untill first character
   in line containing derective `  # lockeye: source/do.py +11` -> 2 chars
-
 
 ## configure pre-commit
 
 add configuration to `.pre-commit-config.yaml` file of your repo
 
 ```
-  - repo: https://github.com/worroc/lockeye
-    rev: v0.0.2
-    hooks:
-      - id: lockeye
-        args: ['--log-level', 'error', '--pattern', '*.rst', '*.md', '*.py', '--anchor', 'lockeye']
+- repo: https://github.com/worroc/lockeye
+  rev: v0.0.2
+  hooks:
+    - id: lockeye
+      args: ['--log-level', 'error', '--pattern',
+             '*.rst', '*.md', '*.py', '--anchor', 'lockeye']
 ```
 
 or add -- as last parameter to prevent modified files from been added
 as values to previous parameter
 
 ```
-        args: ['--log-level', 'error', '--pattern', '*.rst', '*.md', '--']
+args: ['--log-level', 'error', '--pattern', '*.rst', '*.md', '--']
 ```
 
 ## developing
@@ -100,7 +100,7 @@ The simplest way to developing is working on the sources
     for example to ~/projects/
 2. configure the debug level in `.pre-commit-config.yaml` of your repo.
 3. make some change (it should cause lockeye to fail) and run git commit.
-The `lockeye` hook will print location of the hook source file
+   The `lockeye` hook will print location of the hook source file
 4. replace this file with a link to a cloned plugin
     ln -sf ~/projects/lockeye/lockeye/main.py <file location from last run>
 
@@ -111,20 +111,21 @@ Now any changes in repo will in action.
 do not allow commit changes marked "NO-COMMIT"
 
 ```
-  if expression:
-    print(f"debug {expression}")  # NO-COMMIT: print expression value only locally
-    ...
+ if expression:
+   print(f"debug {expression}")  # NO-COMMIT: print expression locally only
+   ...
 ```
+
 ## configure pre-commit
 
 add configuration to `.pre-commit-config.yaml` file of your repo
 
 ```
-  - repo: https://github.com/worroc/lockeye
-    rev: v0.0.2
-    hooks:
-      - id: exclude-marked
-        args: ['--log-level', 'info', '--marker', 'NO-COMMIT']
+- repo: https://github.com/worroc/lockeye
+  rev: v0.0.2
+  hooks:
+    - id: exclude-marked
+      args: ['--log-level', 'info', '--marker', 'NO-COMMIT']
 ```
 
 arguments default values:
@@ -135,38 +136,40 @@ arguments default values:
 ## configure local
 
 ```
-    git pull git@github.com:worroc/lockeye.git
-    cd lockyey
-    python -m venv .venv
-    source .venv/bin/activate
-    pip install -e .
-    pwd
+git pull git@github.com:worroc/lockeye.git
+cd lockeye
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
+pwd
 ```
 
 add configuration to `.pre-commit-config.yaml` file of your repo
 
-  - repo: local
-    hooks:
-      - id: exclude-marked
-        name: Exclude from commit
-        language: system
-        entry: <lockeye_repo_directory>/exclude-marked
-        description: "Exclude changes to be commited if contains some marker"
-        args: ["--marker=NO-COMMIT", "--log-level", "DEBUG"]
-        require_serial: true
+```
+- repo: local
+  hooks:
+  - id: exclude-marked
+    name: Exclude from commit
+    language: system
+    entry: <lockeye_repo_directory>/exclude-marked
+    description: "Exclude changes to be commited if contains some marker"
+    args: ["--marker=NO-COMMIT", "--log-level", "DEBUG"]
+    require_serial: true
+```
 
 ## developing
 
 ```
-    # install & configure
-    git pull git@github.com:worroc/lockeye.git
-    cd lockyey
-    python -m venv .venv
-    source .venv/bin/activate
-    pip install -e .
+# install & configure
+git pull git@github.com:worroc/lockeye.git
+cd lockyey
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .
 
-    # see in action
-    echo "NO-COMMIT" >> README.txt
-    git add README.txt
-    pre-commit run
+# see in action
+echo "NO-COMMIT" >> README.txt
+git add README.txt
+pre-commit run
 ```
