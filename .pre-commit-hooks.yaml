@@ -8,3 +8,7 @@
   name: "deny commit marked changes"
   language: python
   entry: exclude-marked
+- id: sync-hash
+  name: "validate generated files are in sync with sources"
+  language: python
+  entry: sync-hash

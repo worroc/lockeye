@@ -173,3 +173,74 @@ echo "NO-COMMIT" >> README.txt
 git add README.txt
 pre-commit run
 ```
+
+# sync-hash
+
+Validate that generated files are in sync with their source files.
+
+When a file is auto-generated from a source (e.g. `locations-flex.conf`
+generated from `endpoint_capability_matrix.yaml`), embed a hash directive
+in the generated file. The `sync-hash` hook computes the actual hash of
+the source and fails the commit if it doesn't match — ensuring the
+generated file is always up to date.
+
+## How it works
+
+The generated file contains a comment with a sync-hash directive:
+
+```
+# lockeye: sync-hash md5 3a8f...b2c1 ../path/to/source.yaml
+```
+
+Format: `lockeye: sync-hash <method> <expected_hash> <relative_path>`
+
+- **method** — hash algorithm (`md5`, `sha256`, etc.)
+- **expected_hash** — hex digest of the source file at generation time
+- **relative_path** — path to the source file, resolved relative to the
+  file containing the directive
+
+On commit, the hook scans staged files for this pattern, recomputes the
+hash of the referenced source, and fails if they don't match.
+
+## Usage
+
+### 1. In your generator script
+
+Compute the hash of the source file and write the directive into the
+generated output:
+
+```python
+import hashlib
+from pathlib import Path
+
+source = Path("source.yaml")
+h = hashlib.md5(source.read_bytes()).hexdigest()
+# write into the generated file:
+# lockeye: sync-hash md5 {h} ../relative/path/to/source.yaml
+```
+
+### 2. Configure pre-commit
+
+Add to `.pre-commit-config.yaml`:
+
+```yaml
+- repo: https://github.com/worroc/lockeye
+  rev: v0.1.0
+  hooks:
+    - id: sync-hash
+```
+
+### 3. Developer workflow
+
+1. Edit the source file
+2. Run the generator to regenerate the output
+3. Stage both files and commit — the hook validates sync
+
+If you forget to regenerate, the commit is rejected with a clear message
+showing expected vs actual hash.
+
+## Running tests
+
+```
+uvx pytest tests/ -v
+```

@@ -23,11 +23,17 @@ setup(
     packages=find_packages(),
     install_requires=(),
     classifiers=[
-        "Development Status :: 1 - Beta" "Intended Audience :: Developers",
+        "Development Status :: 1 - BetaIntended Audience :: Developers",
         "Natural Language :: English",
         "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
     ],
-    entry_points={"console_scripts": ("lockeye=lockeye.main:main", "exclude-marked=exclude_marked.main:main")},
+    entry_points={
+        "console_scripts": (
+            "lockeye=lockeye.main:main",
+            "exclude-marked=exclude_marked.main:main",
+            "sync-hash=sync_hash.main:main",
+        )
+    },
     data_files=[("", [LICENSE, README])],
 )

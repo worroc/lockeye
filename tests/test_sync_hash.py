@@ -1,0 +1,116 @@
+import tempfile
+from pathlib import Path
+
+import pytest
+
+from sync_hash.main import check_file, compute_hash
+
+
+@pytest.fixture
+def tmp_dir():
+    with tempfile.TemporaryDirectory() as d:
+        yield Path(d)
+
+
+def _write(path: Path, content: str):
+    path.write_text(content)
+    return path
+
+
+class TestComputeHash:
+    def test_md5(self, tmp_dir):
+        src = _write(tmp_dir / "src.yaml", "hello: world\n")
+        h = compute_hash("md5", src)
+        assert len(h) == 32
+        assert all(c in "0123456789abcdef" for c in h)
+
+    def test_sha256(self, tmp_dir):
+        src = _write(tmp_dir / "src.yaml", "hello: world\n")
+        h = compute_hash("sha256", src)
+        assert len(h) == 64
+
+    def test_deterministic(self, tmp_dir):
+        src = _write(tmp_dir / "src.yaml", "data\n")
+        assert compute_hash("md5", src) == compute_hash("md5", src)
+
+    def test_changes_with_content(self, tmp_dir):
+        src = tmp_dir / "src.yaml"
+        _write(src, "v1\n")
+        h1 = compute_hash("md5", src)
+        _write(src, "v2\n")
+        h2 = compute_hash("md5", src)
+        assert h1 != h2
+
+
+class TestCheckFile:
+    def test_correct_hash(self, tmp_dir):
+        src = _write(tmp_dir / "src.yaml", "hello: world\n")
+        h = compute_hash("md5", src)
+        gen = _write(tmp_dir / "gen.conf", f"# lockeye: sync-hash md5 {h} src.yaml\n")
+        assert check_file(gen) == []
+
+    def test_correct_hash_sha256(self, tmp_dir):
+        src = _write(tmp_dir / "src.yaml", "data\n")
+        h = compute_hash("sha256", src)
+        gen = _write(tmp_dir / "gen.conf", f"# lockeye: sync-hash sha256 {h} src.yaml\n")
+        assert check_file(gen) == []
+
+    def test_wrong_hash(self, tmp_dir):
+        _write(tmp_dir / "src.yaml", "hello\n")
+        gen = _write(tmp_dir / "gen.conf", "# lockeye: sync-hash md5 deadbeef00000000deadbeef00000000 src.yaml\n")
+        errors = check_file(gen)
+        assert len(errors) == 1
+        assert "hash mismatch" in errors[0]
+
+    def test_missing_source(self, tmp_dir):
+        gen = _write(tmp_dir / "gen.conf", "# lockeye: sync-hash md5 abc123 nonexistent.yaml\n")
+        errors = check_file(gen)
+        assert len(errors) == 1
+        assert "not found" in errors[0]
+
+    def test_no_directive(self, tmp_dir):
+        gen = _write(tmp_dir / "gen.conf", "# just a comment\nsome content\n")
+        assert check_file(gen) == []
+
+    def test_relative_path(self, tmp_dir):
+        sub = tmp_dir / "sub"
+        sub.mkdir()
+        src = _write(tmp_dir / "src.yaml", "content\n")
+        h = compute_hash("md5", src)
+        gen = _write(sub / "gen.conf", f"# lockeye: sync-hash md5 {h} ../src.yaml\n")
+        assert check_file(gen) == []
+
+    def test_multiple_directives(self, tmp_dir):
+        src1 = _write(tmp_dir / "a.yaml", "aaa\n")
+        src2 = _write(tmp_dir / "b.yaml", "bbb\n")
+        h1 = compute_hash("md5", src1)
+        h2 = compute_hash("md5", src2)
+        gen = _write(
+            tmp_dir / "gen.conf",
+            f"# lockeye: sync-hash md5 {h1} a.yaml\n# lockeye: sync-hash md5 {h2} b.yaml\n",
+        )
+        assert check_file(gen) == []
+
+    def test_multiple_directives_one_wrong(self, tmp_dir):
+        src1 = _write(tmp_dir / "a.yaml", "aaa\n")
+        _write(tmp_dir / "b.yaml", "bbb\n")
+        h1 = compute_hash("md5", src1)
+        gen = _write(
+            tmp_dir / "gen.conf",
+            f"# lockeye: sync-hash md5 {h1} a.yaml\n# lockeye: sync-hash md5 0000000000000000 b.yaml\n",
+        )
+        errors = check_file(gen)
+        assert len(errors) == 1
+        assert "b.yaml" in errors[0]
+
+    def test_stale_after_source_change(self, tmp_dir):
+        src = _write(tmp_dir / "src.yaml", "v1\n")
+        h = compute_hash("md5", src)
+        gen = _write(tmp_dir / "gen.conf", f"# lockeye: sync-hash md5 {h} src.yaml\n")
+        assert check_file(gen) == []
+
+        # Change source without regenerating
+        _write(src, "v2\n")
+        errors = check_file(gen)
+        assert len(errors) == 1
+        assert "hash mismatch" in errors[0]
