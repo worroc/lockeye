@@ -1,9 +1,10 @@
+import subprocess
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from sync_hash.main import check_file, compute_hash
+from sync_hash.main import check_file, compute_hash, find_reverse_references
 
 
 @pytest.fixture
@@ -114,3 +115,103 @@ class TestCheckFile:
         errors = check_file(gen)
         assert len(errors) == 1
         assert "hash mismatch" in errors[0]
+
+
+def _git(repo, *args):
+    return subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+
+@pytest.fixture
+def git_repo():
+    with tempfile.TemporaryDirectory() as d:
+        repo = Path(d)
+        _git(repo, "init")
+        _git(repo, "config", "user.email", "test@test.com")
+        _git(repo, "config", "user.name", "Test")
+        yield repo
+
+
+class TestFindReverseReferences:
+    def test_staged_source_with_stale_hash(self, git_repo):
+        """fileA has sync-hash to fileB, fileB changes — should error."""
+        src = git_repo / "src.yaml"
+        src.write_text("v1\n")
+        h = compute_hash("md5", src)
+
+        gen = git_repo / "gen.conf"
+        gen.write_text(f"# lockeye: sync-hash md5 {h} src.yaml\n")
+
+        _git(git_repo, "add", "src.yaml", "gen.conf")
+        _git(git_repo, "commit", "-m", "initial")
+
+        # Change source, stage only source
+        src.write_text("v2\n")
+        _git(git_repo, "add", "src.yaml")
+
+        errors = find_reverse_references([src], repo_root=git_repo)
+        assert len(errors) == 1
+        assert "hash mismatch" in errors[0]
+        assert "gen.conf" in errors[0]
+
+    def test_staged_source_with_valid_hash(self, git_repo):
+        """fileA has sync-hash to fileB, both updated — no error."""
+        src = git_repo / "src.yaml"
+        src.write_text("v1\n")
+        h = compute_hash("md5", src)
+
+        gen = git_repo / "gen.conf"
+        gen.write_text(f"# lockeye: sync-hash md5 {h} src.yaml\n")
+
+        _git(git_repo, "add", "src.yaml", "gen.conf")
+        _git(git_repo, "commit", "-m", "initial")
+
+        # Change source and update gen with new hash
+        src.write_text("v2\n")
+        h2 = compute_hash("md5", src)
+        gen.write_text(f"# lockeye: sync-hash md5 {h2} src.yaml\n")
+        _git(git_repo, "add", "src.yaml", "gen.conf")
+
+        errors = find_reverse_references([src], repo_root=git_repo)
+        assert errors == []
+
+    def test_staged_file_not_referenced(self, git_repo):
+        """Staged file is not referenced by any sync-hash — no error."""
+        src = git_repo / "src.yaml"
+        src.write_text("data\n")
+        other = git_repo / "other.txt"
+        other.write_text("unrelated\n")
+
+        _git(git_repo, "add", "src.yaml", "other.txt")
+        _git(git_repo, "commit", "-m", "initial")
+
+        src.write_text("changed\n")
+        _git(git_repo, "add", "src.yaml")
+
+        errors = find_reverse_references([src], repo_root=git_repo)
+        assert errors == []
+
+    def test_multiple_files_reference_same_source(self, git_repo):
+        """Two files reference the same source — both should error."""
+        src = git_repo / "src.yaml"
+        src.write_text("v1\n")
+        h = compute_hash("md5", src)
+
+        gen1 = git_repo / "gen1.conf"
+        gen1.write_text(f"# lockeye: sync-hash md5 {h} src.yaml\n")
+        gen2 = git_repo / "gen2.conf"
+        gen2.write_text(f"# lockeye: sync-hash md5 {h} src.yaml\n")
+
+        _git(git_repo, "add", ".")
+        _git(git_repo, "commit", "-m", "initial")
+
+        src.write_text("v2\n")
+        _git(git_repo, "add", "src.yaml")
+
+        errors = find_reverse_references([src], repo_root=git_repo)
+        assert len(errors) == 2

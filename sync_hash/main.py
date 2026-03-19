@@ -2,6 +2,7 @@ import argparse
 import hashlib
 import logging
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
@@ -90,18 +91,92 @@ def config_logger(args):
     )
 
 
+def find_reverse_references(staged_files: list[Path], repo_root: Optional[Path] = None) -> list[str]:
+    """Find repo files that have sync-hash directives pointing to any staged file."""
+    git_cwd = str(repo_root) if repo_root else None
+    try:
+        result = subprocess.run(
+            ["git", "grep", "-n", "--cached", "lockeye:.*sync-hash"],
+            capture_output=True,
+            text=True,
+            cwd=git_cwd,
+        )
+    except FileNotFoundError:
+        logger.warning("git not found, skipping reverse reference check")
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    if repo_root is None:
+        repo_root = Path(
+            subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
+
+    staged_resolved = {f.resolve() for f in staged_files}
+    errors = []
+
+    for line in result.stdout.splitlines():
+        # format: file:line_no:content
+        parts = line.split(":", 2)
+        if len(parts) < 3:
+            continue
+        ref_file, line_no, content = parts[0], parts[1], parts[2]
+
+        match = SYNC_HASH_RE.search(content)
+        if not match:
+            continue
+
+        method = match.group(1)
+        expected_hash = match.group(2)
+        rel_path = match.group(3).strip()
+
+        ref_file_path = repo_root / ref_file
+        source_path = (ref_file_path.parent / rel_path).resolve()
+
+        if source_path not in staged_resolved:
+            continue
+
+        if not source_path.is_file():
+            continue
+
+        try:
+            actual_hash = compute_hash(method, source_path)
+        except ValueError:
+            continue
+
+        if actual_hash != expected_hash:
+            errors.append(
+                f"{ref_file}:{line_no}: hash mismatch for {rel_path} "
+                f"(source file was staged but referencing file not updated)\n"
+                f"  expected: {expected_hash}\n"
+                f"  actual:   {actual_hash}\n"
+                f"  Regenerate {ref_file} and stage it."
+            )
+
+    return errors
+
+
 def main():
     args = parse_args()
     config_logger(args)
     logger.debug(f"Arguments: {args}")
 
     all_errors = []
+    staged_files = []
     for file_arg in args.get("files", []):
         file_path = Path(file_arg)
         if not file_path.is_file():
             continue
+        staged_files.append(file_path)
         errors = check_file(file_path)
         all_errors.extend(errors)
+
+    all_errors.extend(find_reverse_references(staged_files))
 
     if all_errors:
         print(_color("red", "sync-hash validation failed:"))
