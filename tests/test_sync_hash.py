@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from sync_hash.main import check_file, compute_hash, find_reverse_references
+from sync_hash.main import _resolve_source_path, check_file, compute_hash, find_reverse_references
 
 
 @pytest.fixture
@@ -135,6 +135,55 @@ def git_repo():
         _git(repo, "config", "user.email", "test@test.com")
         _git(repo, "config", "user.name", "Test")
         yield repo
+
+
+class TestResolveSourcePath:
+    def test_relative_path(self, tmp_dir):
+        sub = tmp_dir / "sub"
+        sub.mkdir()
+        src = _write(tmp_dir / "src.yaml", "data\n")
+        ref_file = sub / "gen.conf"
+        resolved = _resolve_source_path(ref_file, "../src.yaml")
+        assert resolved == src.resolve()
+
+    def test_absolute_path_rejected(self, tmp_dir):
+        ref_file = tmp_dir / "gen.conf"
+        with pytest.raises(ValueError, match="absolute paths not allowed"):
+            _resolve_source_path(ref_file, "/etc/passwd")
+
+    def test_repo_prefix(self, git_repo):
+        (git_repo / "hslibs").mkdir()
+        src = _write(git_repo / "hslibs" / "src.yaml", "data\n")
+        ref_file = git_repo / "deep" / "nested" / "gen.conf"
+        import os
+
+        old_cwd = os.getcwd()
+        os.chdir(git_repo)
+        try:
+            resolved = _resolve_source_path(ref_file, "repo://hslibs/src.yaml")
+            assert resolved == src.resolve()
+        finally:
+            os.chdir(old_cwd)
+
+    def test_check_file_absolute_path_error(self, tmp_dir):
+        gen = _write(tmp_dir / "gen.conf", "# lockeye: sync-hash md5 abc123 /etc/passwd\n")
+        errors = check_file(gen)
+        assert len(errors) == 1
+        assert "absolute paths not allowed" in errors[0]
+
+    def test_check_file_repo_prefix(self, git_repo):
+        src = _write(git_repo / "src.yaml", "data\n")
+        h = compute_hash("md5", src)
+        (git_repo / "sub").mkdir()
+        gen = _write(git_repo / "sub" / "gen.conf", f"# lockeye: sync-hash md5 {h} repo://src.yaml\n")
+        import os
+
+        old_cwd = os.getcwd()
+        os.chdir(git_repo)
+        try:
+            assert check_file(gen) == []
+        finally:
+            os.chdir(old_cwd)
 
 
 class TestFindReverseReferences:

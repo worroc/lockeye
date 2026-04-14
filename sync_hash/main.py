@@ -19,10 +19,36 @@ def _color(color: str, text: str):
     return f"{start_color[color]}{text}{end_color}"
 
 
+REPO_PREFIX = "repo://"
+
+
 def compute_hash(method: str, file_path: Path) -> str:
     h = hashlib.new(method)
     h.update(file_path.read_bytes())
     return h.hexdigest()
+
+
+def _get_repo_root() -> Path:
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+    )
+    return Path(result.stdout.strip())
+
+
+def _resolve_source_path(ref_file: Path, raw_path: str) -> Path:
+    """Resolve a sync-hash source path.
+
+    - repo://path — relative to git repo root
+    - /absolute   — rejected (raises ValueError)
+    - relative    — relative to the referencing file's directory
+    """
+    if raw_path.startswith(REPO_PREFIX):
+        return (_get_repo_root() / raw_path[len(REPO_PREFIX) :]).resolve()
+    if raw_path.startswith("/"):
+        raise ValueError(f"absolute paths not allowed: {raw_path}")
+    return (ref_file.parent / raw_path).resolve()
 
 
 def check_file(file_path: Path) -> list:
@@ -43,7 +69,11 @@ def check_file(file_path: Path) -> list:
         expected_hash = match.group(2)
         rel_path = match.group(3).strip()
 
-        source_path = (file_path.parent / rel_path).resolve()
+        try:
+            source_path = _resolve_source_path(file_path, rel_path)
+        except ValueError as e:
+            errors.append(f"{file_path}:{line_no}: {e}")
+            continue
         if not source_path.is_file():
             errors.append(f"{file_path}:{line_no}: source file not found: {rel_path} (resolved to {source_path})")
             continue
@@ -136,7 +166,10 @@ def find_reverse_references(staged_files: list[Path], repo_root: Optional[Path] 
         rel_path = match.group(3).strip()
 
         ref_file_path = repo_root / ref_file
-        source_path = (ref_file_path.parent / rel_path).resolve()
+        try:
+            source_path = _resolve_source_path(ref_file_path, rel_path)
+        except ValueError:
+            continue
 
         if source_path not in staged_resolved:
             continue
