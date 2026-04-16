@@ -278,7 +278,7 @@ file and recommit.
 
 ```yaml
 - repo: https://github.com/worroc/lockeye
-  rev: v0.1.2
+  rev: v0.1.3
   hooks:
     - id: autoink
 ```
