@@ -33,6 +33,7 @@ setup(
             "lockeye=lockeye.main:main",
             "exclude-marked=exclude_marked.main:main",
             "sync-hash=sync_hash.main:main",
+            "autoink=autoink.main:main",
         )
     },
     data_files=[("", [LICENSE, README])],

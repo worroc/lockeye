@@ -244,3 +244,41 @@ showing expected vs actual hash.
 ```
 uvx pytest tests/ -v
 ```
+
+# autoink
+
+Auto-increment a version counter in files when they are changed.
+
+Place a `lockeye: autoink <version> <timestamp>` directive in a comment,
+followed by a variable assignment that holds the same version:
+
+```powershell
+# lockeye: autoink 1 2026-04-16T00:00:00Z
+$ScriptVersion = 1
+```
+
+```python
+# lockeye: autoink 1 2026-04-16T00:00:00Z
+VERSION = 1
+```
+
+The comment line is the source of truth. On commit the hook compares the
+**full directive line** in the staged file to the one in `HEAD`:
+
+- **Identical** — file changed but version not bumped. The hook increments
+  the integer, sets the timestamp to now (UTC), and rewrites the file.
+  It then checks the next non-blank line; if that line contains the old
+  version number it gets the new one mirrored in.
+- **Different** — developer already bumped it, hook passes.
+
+The commit is aborted after an auto-increment so you can stage the updated
+file and recommit.
+
+## configure pre-commit
+
+```yaml
+- repo: https://github.com/worroc/lockeye
+  rev: v0.1.2
+  hooks:
+    - id: autoink
+```

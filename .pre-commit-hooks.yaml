@@ -12,3 +12,7 @@
   name: "validate generated files are in sync with sources"
   language: python
   entry: sync-hash
+- id: autoink
+  name: "auto-increment version in changed files"
+  language: python
+  entry: autoink
