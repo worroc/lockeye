@@ -1,11 +1,16 @@
 import argparse
 import logging
+import re
 import subprocess
 import sys
 from collections import defaultdict, namedtuple
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
+
+# Token boundary: whitespace plus common sentence/wrapping punctuation.
+# Excludes `-` `_` `/` `\` — part of the marker or identifiers.
+_BOUNDARY_RE = re.compile(r"[\s,.;:!?()\[\]{}\"'`<>|]+")
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +34,16 @@ Match = namedtuple("Match", ["file", "matched_lines"])
 def get_matches(
     args: Dict,
 ) -> List[Match]:
-    marker = args["marker"].lower()
+    case_sensitive = args.get("case_sensitive", False)
+    marker = args["marker"] if case_sensitive else args["marker"].lower()
     command = "git diff --cached"
-    logger.debug(f"looking for marker `{marker}` in diffs {command}")
+    logger.debug(f"looking for marker `{marker}` in diffs {command} (case_sensitive={case_sensitive})")
     res = subprocess.run(command, shell=True, capture_output=True)
     if res.returncode:
         return []
     res = res.stdout.decode("utf-8")
-    if marker not in res.lower():
+    haystack = res if case_sensitive else res.lower()
+    if marker not in haystack:
         return []
 
     lines = res.split("\n")
@@ -52,8 +59,12 @@ def get_matches(
             file = Path(line.split(" ")[-1][2:].strip())
             continue
 
-        if line.startswith("+") and marker in line.lower():
-            # `+zx        args: ["--marker=NO-COMMIT", "--log-level", "DEBUG"]`
+        if not line.startswith("+"):
+            continue
+        content = line[1:].lstrip()
+        search = content if case_sensitive else content.lower()
+        tokens = _BOUNDARY_RE.split(search)
+        if marker in tokens[1:]:
             file_2_matches[file].append(line)
 
     for file, lines in file_2_matches.items():
@@ -69,7 +80,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     env_group = parser.add_argument_group("env options")
     env_group.add_argument("--log-level", default="info", help="log level output")
-    env_group.add_argument("--marker", default="no-commit", help="marker to discard from commit (case insensitive)")
+    env_group.add_argument("--marker", default="no-commit", help="marker to discard from commit")
+    env_group.add_argument(
+        "--case-sensitive",
+        action="store_true",
+        help="match marker case-sensitively (default: case-insensitive)",
+    )
     target_group = parser.add_argument_group("target options")
     target_group.add_argument("files", nargs="*", help="One or more source files.")
     return parser
