@@ -334,7 +334,22 @@ Pass a custom regex with `--pattern` to match a different tracker
       args: ['--pattern', 'JIRA-\d+']
 ```
 
+## case sensitivity
+
+The match is **case-insensitive** by default (`AB#12` and `ab#12` both pass).
+Pass `--case-sensitive` to require the exact case of the pattern:
+
+```yaml
+- repo: https://github.com/worroc/lockeye
+  rev: v0.1.5
+  hooks:
+    - id: require-workitem
+      stages: [commit-msg]
+      args: ['--case-sensitive']
+```
+
 arguments default values:
 
 * --log-level: info
 * --pattern: `AB#\d+`
+* --case-sensitive: false

@@ -25,9 +25,10 @@ def _strip_comments(message: str) -> str:
     return "\n".join(lines)
 
 
-def has_workitem(message: str, pattern: str) -> bool:
+def has_workitem(message: str, pattern: str, case_sensitive: bool = False) -> bool:
     body = _strip_comments(message)
-    return re.search(pattern, body, re.IGNORECASE) is not None
+    flags = 0 if case_sensitive else re.IGNORECASE
+    return re.search(pattern, body, flags) is not None
 
 
 def _read_message(path: str) -> str:
@@ -39,6 +40,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     env_group = parser.add_argument_group("env options")
     env_group.add_argument("--log-level", default="info", help="log level output")
     env_group.add_argument("--pattern", default=r"AB#\d+", help="regex the commit message must contain")
+    env_group.add_argument(
+        "--case-sensitive",
+        action="store_true",
+        help="match pattern case-sensitively (default: case-insensitive)",
+    )
     target_group = parser.add_argument_group("target options")
     target_group.add_argument("files", nargs="*", help="commit message file (passed by pre-commit).")
     return parser
@@ -73,8 +79,9 @@ def main():
         sys.exit(1)
 
     pattern = args["pattern"]
+    case_sensitive = args.get("case_sensitive", False)
     message = _read_message(files[0])
-    if has_workitem(message, pattern):
+    if has_workitem(message, pattern, case_sensitive):
         return
 
     print(highlight_error(f"commit message must contain a work item matching `{pattern}` (e.g. AB#1234)"))
