@@ -415,3 +415,23 @@ arguments default values:
 * --log-level: info
 * --pattern: `AB#\d+`
 * --case-sensitive: false
+
+# tests
+
+Every hook has a matching test file under `tests/`
+(`test_lockeye.py`, `test_exclude_marked.py`, `test_sync_hash.py`,
+`test_autoink.py`, `test_require_workitem.py`).
+
+Run the whole suite with `uv` (no manual environment setup needed):
+
+```
+uvx pytest tests/ -v
+```
+
+Run the tests for a single hook:
+
+```
+uvx pytest tests/test_require_workitem.py -v
+```
+
+When you add a new hook, add a `tests/test_<hook>.py` alongside it.
