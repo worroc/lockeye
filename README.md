@@ -116,6 +116,34 @@ do not allow commit changes marked "NO-COMMIT"
    ...
 ```
 
+On commit the hook scans the staged diff. When a marker is found it removes
+that file from the commit (`git reset`) and aborts, so the debug line is not
+committed. Stage the cleaned file again and re-commit.
+
+## match only inside comments
+
+The marker counts only when it is inside a **comment**. Whether a line is a
+comment depends on the file type, so the hook keeps a built-in map of comment
+syntax per file extension:
+
+* `#` — `.py .sh .yaml .yml .toml .ini .rb ...`
+* `//` and `/*` — `.js .ts .go .c .cpp .h .java .rs .cs ...`
+* `<!--` — `.md .html .htm .xml .vue`
+* `..` — `.rst`
+* `--` — `.sql .lua`
+
+Rules:
+
+* A **known** extension matches the marker only after a comment introducer on
+  the line. `x = "no-commit"` (a string) or bare code does **not** trigger.
+* A file with an **unknown** extension, or **no** extension, matches the marker
+  anywhere on the line.
+* `.pre-commit-config.yaml` is always skipped (it holds the marker as config).
+
+The marker is matched as a whole word, so `no-committed` does not trigger, and
+it is found even when glued to comment delimiters (`/*no-commit*/`,
+`<!--no-commit-->`).
+
 ## configure pre-commit
 
 add configuration to `.pre-commit-config.yaml` file of your repo
@@ -128,10 +156,44 @@ add configuration to `.pre-commit-config.yaml` file of your repo
       args: ['--log-level', 'info', '--marker', 'NO-COMMIT']
 ```
 
+## add or override comment syntax
+
+Use `--comment EXT=SYNTAX` to add a new extension or replace a built-in one.
+List several introducers with commas. Repeat the flag for more extensions.
+Give only the opening delimiter (`/*`, `<!--`) — not the closer.
+
+```yaml
+- id: exclude-marked
+  args: ['--comment', '.vue=<!--', '--comment', '.foo=//,/*']
+```
+
+## exclude files
+
+`.pre-commit-config.yaml` is always excluded. Add more with `--exclude`
+(a file name or a repo-relative path). Repeat the flag for more files.
+
+```yaml
+- id: exclude-marked
+  args: ['--exclude', 'generated.py', '--exclude', 'src/vendor.js']
+```
+
+## case sensitivity
+
+The marker is matched **case-insensitively** by default (`NO-COMMIT` and
+`no-commit` both trigger). Pass `--case-sensitive` to require the exact case.
+
+```yaml
+- id: exclude-marked
+  args: ['--marker', 'NO-COMMIT', '--case-sensitive']
+```
+
 arguments default values:
 
 * --log-level: info
 * --marker: NO-COMMIT
+* --case-sensitive: false
+* --comment: (built-in map only)
+* --exclude: .pre-commit-config.yaml
 
 ## configure local
 

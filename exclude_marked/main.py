@@ -6,11 +6,55 @@ import sys
 from collections import defaultdict, namedtuple
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Pattern, Sequence, Set
 
-# Token boundary: whitespace plus common sentence/wrapping punctuation.
-# Excludes `-` `_` `/` `\` — part of the marker or identifiers.
-_BOUNDARY_RE = re.compile(r"[\s,.;:!?()\[\]{}\"'`<>|]+")
+# Default comment introducers per file extension. For a file of a known type
+# the marker matches ONLY when it appears (as a whole token) after one of these
+# on the line. Files with an unknown extension, or no extension at all, match
+# the marker anywhere on the line.
+DEFAULT_COMMENT_SYNTAX: Dict[str, List[str]] = {
+    ".py": ["#"],
+    ".sh": ["#"],
+    ".bash": ["#"],
+    ".zsh": ["#"],
+    ".yaml": ["#"],
+    ".yml": ["#"],
+    ".toml": ["#"],
+    ".cfg": ["#"],
+    ".ini": ["#"],
+    ".rb": ["#"],
+    ".pl": ["#"],
+    ".r": ["#"],
+    ".js": ["//", "/*"],
+    ".ts": ["//", "/*"],
+    ".jsx": ["//", "/*"],
+    ".tsx": ["//", "/*"],
+    ".go": ["//", "/*"],
+    ".c": ["//", "/*"],
+    ".h": ["//", "/*"],
+    ".cpp": ["//", "/*"],
+    ".hpp": ["//", "/*"],
+    ".cc": ["//", "/*"],
+    ".java": ["//", "/*"],
+    ".rs": ["//", "/*"],
+    ".cs": ["//", "/*"],
+    ".php": ["//", "/*", "#"],
+    ".swift": ["//", "/*"],
+    ".kt": ["//", "/*"],
+    ".scala": ["//", "/*"],
+    ".md": ["<!--"],
+    ".markdown": ["<!--"],
+    ".html": ["<!--"],
+    ".htm": ["<!--"],
+    ".xml": ["<!--"],
+    ".vue": ["<!--"],
+    ".rst": [".."],
+    ".sql": ["--"],
+    ".lua": ["--"],
+}
+
+# Files never scanned for the marker (they legitimately contain it as config).
+DEFAULT_EXCLUDE: Set[str] = {".pre-commit-config.yaml"}
 
 logger = logging.getLogger(__name__)
 
@@ -31,46 +75,108 @@ highlight_info = partial(_color, "green")
 Match = namedtuple("Match", ["file", "matched_lines"])
 
 
-def get_matches(
-    args: Dict,
-) -> List[Match]:
-    case_sensitive = args.get("case_sensitive", False)
-    marker = args["marker"] if case_sensitive else args["marker"].lower()
-    command = "git diff --cached"
-    logger.debug(f"looking for marker `{marker}` in diffs {command} (case_sensitive={case_sensitive})")
-    res = subprocess.run(command, shell=True, capture_output=True)
+def make_marker_re(marker: str, case_sensitive: bool = False) -> Pattern[str]:
+    """Compile a whole-word matcher for `marker`.
+
+    Look-arounds require the marker not be flanked by word characters, so it is
+    found even when glued to comment delimiters (`/*no-commit*/`,
+    `<!--no-commit-->`) yet never as a substring of a longer word
+    (`no-committed`, `xno-commit`).
+    """
+    flags = 0 if case_sensitive else re.IGNORECASE
+    return re.compile(r"(?<!\w)" + re.escape(marker) + r"(?!\w)", flags)
+
+
+def _comment_body(content: str, introducers: List[str]) -> Optional[str]:
+    """Return the line portion at/after the earliest comment introducer,
+    or None when the line has no comment for this file type."""
+    positions = [content.find(intro) for intro in introducers]
+    positions = [p for p in positions if p != -1]
+    if not positions:
+        return None
+    return content[min(positions) :]
+
+
+def _line_matches(file: Path, content: str, marker_re: Pattern[str], comment_syntax: Dict[str, List[str]]) -> bool:
+    introducers = comment_syntax.get(file.suffix.lower())
+    if not introducers:
+        # unknown or missing extension: match the marker anywhere on the line
+        return marker_re.search(content) is not None
+    body = _comment_body(content, introducers)
+    if body is None:
+        return False
+    return marker_re.search(body) is not None
+
+
+def build_comment_syntax(args: Dict) -> Dict[str, List[str]]:
+    """Start from the built-in map, then apply `--comment EXT=SYNTAX` overrides."""
+    syntax = {ext: list(intros) for ext, intros in DEFAULT_COMMENT_SYNTAX.items()}
+    for entry in args.get("comment", []):
+        ext, _, intros = entry.partition("=")
+        syntax[ext.lower()] = [s for s in intros.split(",") if s]
+    return syntax
+
+
+def build_exclude(args: Dict) -> Set[str]:
+    return set(DEFAULT_EXCLUDE) | set(args.get("exclude", []))
+
+
+def _read_cached_diff() -> Optional[str]:
+    res = subprocess.run("git diff --cached", shell=True, capture_output=True)
     if res.returncode:
-        return []
-    res = res.stdout.decode("utf-8")
-    haystack = res if case_sensitive else res.lower()
-    if marker not in haystack:
-        return []
+        return None
+    return res.stdout.decode("utf-8")
 
-    lines = res.split("\n")
 
-    matches: List[Match] = []
-    file_2_matches = defaultdict(list)
-    file = ""
+def _parse_diff_file(line: str) -> Path:
+    # `diff --git a/exclude_marked/main.py b/exclude_marked/main.py`
+    return Path(line.split(" ")[-1][2:].strip())
 
-    for line in lines:
+
+def _is_excluded(file: Path, exclude: Set[str]) -> bool:
+    return file.name in exclude or str(file) in exclude
+
+
+def _scan_diff(
+    diff: str,
+    marker_re: Pattern[str],
+    comment_syntax: Dict[str, List[str]],
+    exclude: Set[str],
+) -> Dict[Path, List[str]]:
+    file_2_matches: Dict[Path, List[str]] = defaultdict(list)
+    file = Path("")
+    skip = False
+
+    for line in diff.split("\n"):
         if line.startswith("diff --git"):
-            # `diff --git a/exclude_marked/main.py b/exclude_marked/main.py`
-            logger.debug(f"file: {line}")
-            file = Path(line.split(" ")[-1][2:].strip())
+            file = _parse_diff_file(line)
+            skip = _is_excluded(file, exclude)
+            logger.debug(f"file: {file} (skip={skip})")
             continue
-
-        if not line.startswith("+"):
+        if skip or line.startswith("+++") or not line.startswith("+"):
             continue
         content = line[1:].lstrip()
-        search = content if case_sensitive else content.lower()
-        tokens = _BOUNDARY_RE.split(search)
-        if marker in tokens[1:]:
+        if _line_matches(file, content, marker_re, comment_syntax):
             file_2_matches[file].append(line)
 
-    for file, lines in file_2_matches.items():
-        matches.append(Match(file, lines))
+    return file_2_matches
 
-    return matches
+
+def get_matches(args: Dict) -> List[Match]:
+    case_sensitive = args.get("case_sensitive", False)
+    marker_re = make_marker_re(args["marker"], case_sensitive)
+    comment_syntax = build_comment_syntax(args)
+    exclude = build_exclude(args)
+    logger.debug(f"looking for marker `{args['marker']}` (case_sensitive={case_sensitive}, exclude={exclude})")
+
+    diff = _read_cached_diff()
+    if diff is None:
+        return []
+    if not marker_re.search(diff):
+        return []
+
+    file_2_matches = _scan_diff(diff, marker_re, comment_syntax, exclude)
+    return [Match(file, lines) for file, lines in file_2_matches.items()]
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
@@ -85,6 +191,21 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--case-sensitive",
         action="store_true",
         help="match marker case-sensitively (default: case-insensitive)",
+    )
+    env_group.add_argument(
+        "--comment",
+        action="append",
+        default=[],
+        metavar="EXT=SYNTAX",
+        help="add/override comment syntax for a file extension, "
+        "e.g. --comment .vue=<!-- or --comment .foo=//,/* (repeatable)",
+    )
+    env_group.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="FILE",
+        help="filename or path to skip entirely (repeatable); .pre-commit-config.yaml is always excluded",
     )
     target_group = parser.add_argument_group("target options")
     target_group.add_argument("files", nargs="*", help="One or more source files.")
