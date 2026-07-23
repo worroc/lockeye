@@ -349,8 +349,10 @@ file and recommit.
 
 Require a work item reference in the commit message.
 
-The hook reads the commit message and looks for a work item pattern
-(default `AB#<number>`, e.g. `AB#1234`). The match is **case-insensitive**.
+The hook reads the commit message and looks for the work item pattern(s) you
+configure (for example `AB#<number>`, e.g. `AB#1234`). There is **no default
+pattern** — you must pass at least one `--pattern`. If you pass several, the
+commit message must match **all** of them. The match is **case-insensitive**.
 Lines starting with `#` are treated as comments and ignored, so a reference
 that only appears in the commit template's comment block does not count.
 
@@ -373,6 +375,7 @@ the staged files), so it must be declared with `stages: [commit-msg]`.
   hooks:
     - id: require-workitem
       stages: [commit-msg]
+      args: ['--pattern', 'AB#\d+']
 ```
 
 The `commit-msg` stage is **not** installed by pre-commit's default
@@ -382,10 +385,9 @@ The `commit-msg` stage is **not** installed by pre-commit's default
 pre-commit install --hook-type commit-msg
 ```
 
-## override the pattern
+## configure the pattern(s)
 
-Pass a custom regex with `--pattern` to match a different tracker
-(for example `JIRA-\d+`):
+Pass a regex with `--pattern` to match your tracker (for example `JIRA-\d+`):
 
 ```yaml
 - repo: https://github.com/worroc/lockeye
@@ -394,6 +396,19 @@ Pass a custom regex with `--pattern` to match a different tracker
     - id: require-workitem
       stages: [commit-msg]
       args: ['--pattern', 'JIRA-\d+']
+```
+
+Repeat `--pattern` to require **several** references at once. The commit
+message must match **every** pattern (for example both an Azure Boards item
+and a JIRA ticket):
+
+```yaml
+- repo: https://github.com/worroc/lockeye
+  rev: v0.1.5
+  hooks:
+    - id: require-workitem
+      stages: [commit-msg]
+      args: ['--pattern', 'AB#\d+', '--pattern', 'JIRA-\d+']
 ```
 
 ## case sensitivity
@@ -413,7 +428,7 @@ Pass `--case-sensitive` to require the exact case of the pattern:
 arguments default values:
 
 * --log-level: info
-* --pattern: `AB#\d+`
+* --pattern: none (required; repeat to require several patterns)
 * --case-sensitive: false
 
 # tests

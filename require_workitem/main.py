@@ -4,7 +4,7 @@ import re
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,11 @@ def has_workitem(message: str, pattern: str, case_sensitive: bool = False) -> bo
     return re.search(pattern, body, flags) is not None
 
 
+def missing_patterns(message: str, patterns: Sequence[str], case_sensitive: bool = False) -> List[str]:
+    """Return the patterns from `patterns` that do not match the message."""
+    return [p for p in patterns if not has_workitem(message, p, case_sensitive)]
+
+
 def _read_message(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
@@ -39,7 +44,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="", add_help=False)
     env_group = parser.add_argument_group("env options")
     env_group.add_argument("--log-level", default="info", help="log level output")
-    env_group.add_argument("--pattern", default=r"AB#\d+", help="regex the commit message must contain")
+    env_group.add_argument(
+        "--pattern",
+        action="append",
+        dest="patterns",
+        default=[],
+        metavar="REGEX",
+        help="regex the commit message must contain; repeat to require several patterns",
+    )
     env_group.add_argument(
         "--case-sensitive",
         action="store_true",
@@ -78,13 +90,21 @@ def main():
         print(highlight_error("no commit message file passed; use stage `commit-msg`"))
         sys.exit(1)
 
-    pattern = args["pattern"]
+    patterns = args.get("patterns", [])
+    if not patterns:
+        print(
+            highlight_error("no pattern configured; pass at least one `--pattern <regex>` (e.g. --pattern 'AB#\\d+')")
+        )
+        sys.exit(1)
+
     case_sensitive = args.get("case_sensitive", False)
     message = _read_message(files[0])
-    if has_workitem(message, pattern, case_sensitive):
+    missing = missing_patterns(message, patterns, case_sensitive)
+    if not missing:
         return
 
-    print(highlight_error(f"commit message must contain a work item matching `{pattern}` (e.g. AB#1234)"))
+    for pattern in missing:
+        print(highlight_error(f"commit message must contain a work item matching `{pattern}`"))
     sys.exit(1)
 
 
