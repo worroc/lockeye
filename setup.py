@@ -34,6 +34,7 @@ setup(
             "exclude-marked=exclude_marked.main:main",
             "sync-hash=sync_hash.main:main",
             "autoink=autoink.main:main",
+            "require-workitem=require_workitem.main:main",
         )
     },
     data_files=[("", [LICENSE, README])],

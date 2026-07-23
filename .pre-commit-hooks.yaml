@@ -16,3 +16,8 @@
   name: "auto-increment version in changed files"
   language: python
   entry: autoink
+- id: require-workitem
+  name: "require AB#<number> in commit message"
+  language: python
+  entry: require-workitem
+  stages: [commit-msg]

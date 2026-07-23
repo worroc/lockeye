@@ -282,3 +282,59 @@ file and recommit.
   hooks:
     - id: autoink
 ```
+
+# require-workitem
+
+Require a work item reference in the commit message.
+
+The hook reads the commit message and looks for a work item pattern
+(default `AB#<number>`, e.g. `AB#1234`). The match is **case-insensitive**.
+Lines starting with `#` are treated as comments and ignored, so a reference
+that only appears in the commit template's comment block does not count.
+
+```
+Fix login retry loop
+
+Root cause was a stale token. AB#4521
+```
+
+If no match is found, the commit is aborted with a message.
+
+## configure pre-commit
+
+This hook runs in the `commit-msg` stage (it needs the commit message, not
+the staged files), so it must be declared with `stages: [commit-msg]`.
+
+```yaml
+- repo: https://github.com/worroc/lockeye
+  rev: v0.1.5
+  hooks:
+    - id: require-workitem
+      stages: [commit-msg]
+```
+
+The `commit-msg` stage is **not** installed by pre-commit's default
+`pre-commit install`. Install it once per clone:
+
+```
+pre-commit install --hook-type commit-msg
+```
+
+## override the pattern
+
+Pass a custom regex with `--pattern` to match a different tracker
+(for example `JIRA-\d+`):
+
+```yaml
+- repo: https://github.com/worroc/lockeye
+  rev: v0.1.5
+  hooks:
+    - id: require-workitem
+      stages: [commit-msg]
+      args: ['--pattern', 'JIRA-\d+']
+```
+
+arguments default values:
+
+* --log-level: info
+* --pattern: `AB#\d+`
